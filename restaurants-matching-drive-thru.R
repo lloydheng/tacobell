@@ -323,6 +323,19 @@ restaurant$policy <- ifelse(restaurant$state=="NY"&
 #export unmatched data
 #write.csv(restaurant, "data/calorie-aims/unmatched-restaurants-drive-thru.csv", row.names = FALSE)
 
+### clean invalid observations ----
+# drop all restaurants with a monthly calorie value (within our sampled range) that is <50% of overall mean
+
+todrop <- restaurant %>%
+  mutate(relative2 = monthno - entry) %>% # defines relative month
+  filter((relative2>=-30&relative2<=-3)|(relative2>=2&relative2<=29)) %>% # sampled months
+  group_by(address) %>%
+  mutate(meancal = mean(calorie)) %>%
+  filter(calorie < meancal*0.5) %>%
+  subset(, select = c(address))
+
+restaurant <- restaurant[!restaurant$address %in% todrop$address,] # remove violations
+
 ### ps matching + iptw weighting, trim extrem weights ----
 #ignore 2 months leading to ML
 #match on months t-8 to t-3
@@ -443,6 +456,7 @@ par(mfrow=c(1,1))
 names(matched)
 length(unique(matched$address)) #some comparison restaurants were matched to multiple treated restaurants
 table(matched$match_place)
+memory.limit(size = 500000)
 master_all <- NULL
 for (i in c("ca","king","ma","mont","or","suffolk")) {
   tmp <- matched %>%
@@ -452,10 +466,11 @@ for (i in c("ca","king","ma","mont","or","suffolk")) {
     left_join(restaurant, by=c("address", "tract_num", "ownership", "concept")) %>%
     arrange(address, tract_num, monthno) %>%
     dplyr::select(c(address:above65,treat,policy)) %>%
-    rename(entry = entry.x)
+    rename(entry = entry.x) %>%
+    distinct()
   master_all <- rbind(master_all, tmp)
 }
-#write.csv(master_all, "data/calorie-aims/matched-restaurants-trimmed-drive-thru-correct.csv", row.names = FALSE)
+write.csv(master_all, "data/calorie-aims/matched-restaurants-trimmed-drive-thru-correct-cleaned.csv", row.names = FALSE)
 rm(master_all, i,tmp)
 
 result <- cbind(col_w_smd(mat=subset(master.original,select = c(3:4,15:16,20,22:32,35:46,49:52)),
