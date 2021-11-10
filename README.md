@@ -1,7 +1,7 @@
 # Overview
 I joined the research team as they were almost done with their first of three papers/aims. Existing files were provided by an exiting colleague, who did the bulk (honestly, pretty much all) of the work to get the data, analyses, and output running. 
 
-Credits to https://github.com/eriliawu/tacobell - look there for more information about what each file entails and the file states that I inherited. Contributions to this repository are mainly updates to the original code, unless specified otherwise. New files will be detailed in the following sections.
+Credits to https://github.com/eriliawu/tacobell - look there for more information about what each file entails and the file states that I inherited. Updates to the original scripts are not documented in this readme, unless it underwent a major overhaul. Future users should adopt files from this repository, not the original author, to make sure they are not using outdated scripts. New files are detailed in the following sections.
 
 # New Files - Aim 1
 
