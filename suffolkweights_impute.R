@@ -185,7 +185,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -412,19 +412,21 @@ table3 <- table3 %>%
 write.csv(table3, "manuscript/tables/table3-match1-sigpred-imp.csv")
 rm(treat,comp,mod.factor,table3,p,presum,tidy_mod.factor)
 
-    ### vif analysis ----
+      ### vif analysis ----
+formula <- calorie~concept+ownership+drive+meal+calorie3+
+  slope_calorie+slope_count+slope_dollar+
+  total+male+black+asian+hisp+median_income+
+  hsbelow+under18+open12
+
+
+# Significant predictors, stratified by location
+sig <- NULL
 time <- data.frame(c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc"),
                    c(229,241,243,253,251,251,253,253,270,249))
 colnames(time)[1:2] <- c("location","time")
-master <- NULL
-matched <- NULL
-vif <- NULL
 
-for (i in c(1:10)) {
-  formula <- as.character(formula_list[i, 2])
-  formula <- as.formula(formula)
-  restaurant2 <- restaurant
-  subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
+for (i in 1:10) {
+  subset <- subset(restaurant, (treat==1&policy==time[i,1])|treat==0)
   subset$entry <- time[i,2]
   tmp <- subset %>% group_by(address) %>% mutate(relative = monthno - entry) %>%
     filter(relative<0&relative>=-24) %>% mutate(n=n()) %>% mutate(open24 = ifelse(n==24, 1,0)) %>%
@@ -432,36 +434,40 @@ for (i in c(1:10)) {
     filter(relative<0&relative>=-12) %>% mutate(n=n()) %>% mutate(open12 = ifelse(n==12, 1,0)) %>%
     filter(relative<0&relative>=-8) %>% mutate(n=n()) %>% mutate(open8 = ifelse(n==8, 1,0)) %>%
     dplyr::select(address,open8,open12,open18,open24) %>% distinct()
-  
   subset <- merge(subset,tmp,by="address")
-  subset <- subset(subset, open8==1&monthno==time[i,2]) 
+  subset <- subset(subset, open8==1&monthno==251) 
   subset <- subset[complete.cases(subset), ]
+  
+  model <- summary(lm(formula, subset))
+  model_sig <- tidy(model) %>%
+    filter(p.value < 0.05) %>%
+    subset(, select = c(term))
+  
+  sig[[i]] <- rbind(sig[i], model_sig)
   
   vif_diag <- vif(lm(formula, subset)) %>%
     tidy(vif_diag) %>%
     filter(x > 2.5)
   
   print(vif_diag)
-  # for king, calorie3 - calorie_all3 & open18 - open24 have inflated vifs
-  # for ma, vt, and schc, median_income and capital_income have inflated vifs
 }
 
-      ### If we are very conservative and choose to drop some of these collinear terms ----
+# Creates a list of formulae (10 locations)
+formula_list <- data.frame(2, 1:10)
+colnames(formula_list) <- c("location", "formula")
+formula_list$location <- c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc")
 
-formula_list2 <- data.frame(2, 1:10)
-colnames(formula_list2) <- c("location", "formula")
-formula_list2$location <- c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc")
+formula_list$formula <- c(treat ~ ownership + calorie3 + slope_calorie + slope_dollar + black + hisp,
+                          treat ~ ownership + calorie3 + slope_calorie + black,
+                          treat ~ ownership + calorie3 + slope_calorie + black,
+                          treat ~ ownership + calorie3 + slope_calorie + black + open12,
+                          treat ~ ownership + calorie3 + slope_calorie + black,
+                          treat ~ ownership + calorie3 + slope_calorie + black,
+                          treat ~ ownership + meal + calorie3 + slope_calorie + black + open12,
+                          treat ~ ownership + calorie3 + slope_calorie + black + open12,
+                          treat ~ ownership + calorie3 + slope_calorie + slope_count + black,
+                          treat ~ ownership + calorie3 + slope_calorie + black)
 
-formula_list2$formula <- c(treat ~ ownership + calorie3 + slope_calorie_all + slope_count_all + black + under18 + open18, # drops calorie_all3 and open24
-                           treat ~ ownership + drive + calorie3 + slope_calorie + calorie_all3 + black + under18 + open12 + open18 + open24,
-                           treat ~ ownership + calorie3 + slope_calorie + black + open24,
-                           treat ~ ownership + calorie3 + slope_calorie + black + capital_income + above65 + open12,
-                           treat ~ ownership + calorie3 + slope_calorie + black + capital_income + above65,
-                           treat ~ calorie3 + slope_calorie + black + median_income + above65, # drops capital income
-                           treat ~ ownership + meal + calorie3 + slope_calorie + black + above65,
-                           treat ~ ownership + calorie3 + slope_calorie + black + capital_income + above65,
-                           treat ~ ownership + calorie3 + slope_calorie + median_income + open24, # drops capital income
-                           treat ~ ownership + calorie3 + slope_calorie + black + median_income + above65 + open12) # drops capital income
 
       ### Drop covariates to see if PS overlap improves ----
 time <- data.frame(c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc"),
@@ -472,10 +478,10 @@ matched <- NULL
 
 for (i in c(1:10)) {
   tryCatch({#catch groups that do not have comparison restaurants
-    formula <- as.character(formula_list2[i, 2])
+    formula <- as.character(formula_list[i, 2])
     formula <- as.formula(formula)
-    restaurant2 <- restaurant
-    subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
+    
+    subset <- subset(restaurant, (treat==1&policy==time[i,1])|treat==0)
     subset$entry <- time[i,2]
     tmp <- subset %>% group_by(address) %>% mutate(relative = monthno - entry) %>%
       filter(relative<0&relative>=-24) %>% mutate(n=n()) %>% mutate(open24 = ifelse(n==24, 1,0)) %>%
@@ -483,22 +489,27 @@ for (i in c(1:10)) {
       filter(relative<0&relative>=-12) %>% mutate(n=n()) %>% mutate(open12 = ifelse(n==12, 1,0)) %>%
       filter(relative<0&relative>=-8) %>% mutate(n=n()) %>% mutate(open8 = ifelse(n==8, 1,0)) %>%
       dplyr::select(address,open8,open12,open18,open24) %>% distinct()
-    
     subset <- merge(subset,tmp,by="address")
     subset <- subset(subset, open8==1&monthno==time[i,2]) 
+    
+    #matching
     subset <- subset[complete.cases(subset), ]
     subset.match <- matchit(data=subset,formula = formula,distance="logit",method="nearest",replace=FALSE,ratio=3)
     match <- match.data(subset.match, distance="distance", weights = "s.weights") 
+    
+    #add distance to unmatched data
     subset$distance <- subset.match$distance
     
+    #add ps balance
     bal <- weightit(data=match, formula = formula, method = "ps",estimand = "ATT", s.weights = "s.weights")
     match$weights <- bal$weights
     match$match_place <- time[i,1]
+    
     summary(match$weights[match$treat==0])
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -761,7 +772,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -1026,7 +1037,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -1293,7 +1304,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -1547,7 +1558,7 @@ for (i in c(1:10)) {
     filter(relative<0&relative>=-8) %>% mutate(n=n()) %>% mutate(open8 = ifelse(n==8, 1,0)) %>%
     dplyr::select(address,open8,open12,open18,open24) %>% distinct()
   subset <- merge(subset,tmp,by="address")
-  subset <- subset(subset, open8==1&monthno==251) 
+  subset <- subset(subset, open8==1&monthno==time[i,2]) 
   subset <- subset[complete.cases(subset), ]
   
   subset_all <- rbind(subset_all, subset)
@@ -1562,9 +1573,9 @@ model_sig <- tidy(model) %>%
 model_sig
 
 # New formula (predictors of overall model)
-formula <- treat ~ concept + ownership + meal + calorie3 + slope_calorie +
-  slope_count + slope_dollar + slope_dollar_all + male + white +
-  black + asian + median_income + capital_income + collegeup + under18 + above65
+formula <- treat ~ concept + ownership + drive + meal + calorie3 + slope_calorie + count3 +
+  slope_count + dollar3 + slope_dollar + calorie_all3 + slope_calorie_all + count_all3 + slope_count_all + slope_dollar_all + white +
+  black + hisp + open12 + open24
 
 
   ### Drop covariates to see if PS overlap improves ----
@@ -1600,7 +1611,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
@@ -1823,69 +1834,26 @@ for (p in c("ca","ma","or","suffolk")) {
 write.csv(table3, "manuscript/tables/table3-match5-overallsigpred-imp.csv")
 rm(treat,comp,mod.factor,table3,p,presum,tidy_mod.factor)
 
-    ### vif analysis ----
-time <- data.frame(c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc"),
-                   c(229,241,243,253,251,251,253,253,270,249))
-colnames(time)[1:2] <- c("location","time")
-master <- NULL
-matched <- NULL
+      ### vif diagnostics - drop some highly collinear variables ----
+formula <- calorie~concept+ownership+drive+calorie3+
+  slope_calorie+count3+slope_count+dollar3+slope_dollar+
+  total+male+black+asian+hisp+median_income+
+  hsbelow+under18+above65+open12+open18
 
-for (i in c(1:10)) {
-  restaurant2 <- restaurant
-  subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
-  subset$entry <- time[i,2]
-  tmp <- subset %>% group_by(address) %>% mutate(relative = monthno - entry) %>%
-    filter(relative<0&relative>=-24) %>% mutate(n=n()) %>% mutate(open24 = ifelse(n==24, 1,0)) %>%
-    filter(relative<0&relative>=-18) %>% mutate(n=n()) %>% mutate(open18 = ifelse(n==18, 1,0)) %>%
-    filter(relative<0&relative>=-12) %>% mutate(n=n()) %>% mutate(open12 = ifelse(n==12, 1,0)) %>%
-    filter(relative<0&relative>=-8) %>% mutate(n=n()) %>% mutate(open8 = ifelse(n==8, 1,0)) %>%
-    dplyr::select(address,open8,open12,open18,open24) %>% distinct()
-  
-  subset <- merge(subset,tmp,by="address")
-  subset <- subset(subset, open8==1&monthno==time[i,2]) 
-  subset <- subset[complete.cases(subset), ]
-  
-  vif_diag <- vif(lm(formula, subset)) %>%
-    tidy(vif_diag) %>%
-    filter(x > 2.5)
-  
-  print(vif_diag)
-  # there are consistently some pretty bad violators
-}
+vif_diag <- vif(lm(formula,subset_all)) %>%
+  tidy(vif_diag) %>%
+  filter(x > 2.5) 
 
-# vif diagnostics - drop some highly collinear variables
-formula <- treat ~ concept + drive + meal + calorie3 + slope_calorie + count3 +
-  slope_count + dollar3 + slope_dollar + 
-  black + hisp + open12 + open24
+model <- summary(lm(formula, subset_all))
+model_sig <- tidy(model) %>%
+  filter(p.value < 0.05) %>%
+  subset(, select = c(term))
 
-master <- NULL
-matched <- NULL
+model_sig
 
-for (i in c(1:10)) {
-  restaurant2 <- restaurant
-  subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
-  subset$entry <- time[i,2]
-  tmp <- subset %>% group_by(address) %>% mutate(relative = monthno - entry) %>%
-    filter(relative<0&relative>=-24) %>% mutate(n=n()) %>% mutate(open24 = ifelse(n==24, 1,0)) %>%
-    filter(relative<0&relative>=-18) %>% mutate(n=n()) %>% mutate(open18 = ifelse(n==18, 1,0)) %>%
-    filter(relative<0&relative>=-12) %>% mutate(n=n()) %>% mutate(open12 = ifelse(n==12, 1,0)) %>%
-    filter(relative<0&relative>=-8) %>% mutate(n=n()) %>% mutate(open8 = ifelse(n==8, 1,0)) %>%
-    dplyr::select(address,open8,open12,open18,open24) %>% distinct()
-  
-  subset <- merge(subset,tmp,by="address")
-  subset <- subset(subset, open8==1&monthno==time[i,2]) 
-  subset <- subset[complete.cases(subset), ]
-  
-  vif_diag <- vif(lm(formula, subset)) %>%
-    tidy(vif_diag) %>%
-    filter(x > 2.5)
-  
-  print(vif_diag)
-  # all the _all variables are dropped for collinearity
-  # ownership and open24 appears to be collinear as well
-  # black and white are nearly linear composites of each other, and so white is dropped
-  # the resulting model is not perfect, with some collinearity present (mostly the lagged variable and its slope, which makes sense)
-}
+# New formula (predictors of overall model)
+formula <- treat ~ concept + ownership + drive + calorie3 + slope_calorie + count3 +
+  slope_count + dollar3 + slope_dollar + total + asian + median_income + open12 + open18
 
       ### Drop covariates to see if PS overlap improves ----
 time <- data.frame(c("king","philly","albany","mont","suffolk","ma","ca","or","vt","schc"),
@@ -1920,7 +1888,7 @@ for (i in c(1:10)) {
     max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))
     
     while(max(match$weights[match$treat==0])>=0.05*length(unique(match$address[match$treat==0]))) {
-      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0])),]
+      tmp <- match[match$weights>=0.05*length(unique(match$address[match$treat==0]))&match$policy=="none",]
       restaurant2 <- anti_join(restaurant2,tmp,by="address")
       subset <- subset(restaurant2, (treat==1&policy==time[i,1])|treat==0)
       subset$entry <- time[i,2]
