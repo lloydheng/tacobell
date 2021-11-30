@@ -11,5 +11,7 @@ Using various matching criteria (what and how many covariates), this script atte
 # Aim 2
 Aim 2 sets out to explore subgroup differences by census tract-level (i) income, (ii) race, (iii) RUCA classification.
 
-## [aim2-subgroup-diffs.R](https://github.com/lloydheng/tacobell/blob/main/aim2-subgroup-diffs.R)
-(to be updated)
+## [aim2-subgroup-diff.R](https://github.com/lloydheng/tacobell/blob/main/aim2-subgroup-diff.R)
+Models are identical to those in aim 1, except a triple interaction is included to estimate subgroup differences. 
+
+Note that some of a chain of functions embedded within the tidy.lm function requires redefining because R, when inverting matrices, treats near-zero values as zeroes. Checks were made to ensure the output of the newly defined tidy.alt, and the original tidy, are identical on matrices containing no near-zero/zero values.
