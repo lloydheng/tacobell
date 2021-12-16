@@ -15,3 +15,6 @@ Aim 2 sets out to explore subgroup differences by census tract-level (i) income,
 Models are identical to those in aim 1, except a triple interaction is included to estimate subgroup differences. 
 
 Note that some of a chain of functions embedded within the tidy.lm function requires redefining because R, when inverting matrices, treats near-zero values as zeroes. Checks were made to ensure the output of the newly defined tidy.alt, and the original tidy, are identical on matrices containing no near-zero/zero values.
+
+### By Income Category
+The proposal defined 4 categories, but its distribution in the data calls for a re-evaluation (barely any restaurants fell in the lowest category). Alternative operationalizations were considered, including by income tertiles, quartiles, down the median were considered and evaluated for robustness. 
